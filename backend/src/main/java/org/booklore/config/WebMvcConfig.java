@@ -4,7 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.booklore.interceptor.KomgaCleanInterceptor;
 import org.booklore.interceptor.KomgaEnabledInterceptor;
 import org.booklore.interceptor.OpdsEnabledInterceptor;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.task.VirtualThreadTaskExecutor;
@@ -21,8 +24,23 @@ import static org.springframework.data.web.config.EnableSpringDataWebSupport.Pag
 
 @Configuration
 @EnableSpringDataWebSupport(pageSerializationMode = VIA_DTO)
+@ImportRuntimeHints(WebMvcConfig.FrontendResourceHints.class)
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    /**
+     * Embeds the built Angular frontend (copied into classpath:/static/ by the processResources
+     * task) into the native image. Spring Boot's built-in web hints register only static/index.html,
+     * not the hashed JS/CSS asset tree, so the SPA fallback in addResourceHandlers would 404 every
+     * asset in a native binary. Both patterns are needed: static/* for files directly under static/,
+     * static/** for the nested tree (GraalVM globstar does not reliably cover depth-1 files).
+     */
+    static class FrontendResourceHints implements RuntimeHintsRegistrar {
+        @Override
+        public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+            hints.resources().registerPattern("static/*").registerPattern("static/**");
+        }
+    }
 
     private final OpdsEnabledInterceptor opdsEnabledInterceptor;
     private final KomgaEnabledInterceptor komgaEnabledInterceptor;
