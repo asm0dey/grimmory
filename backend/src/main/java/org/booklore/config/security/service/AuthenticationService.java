@@ -4,7 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.model.dto.AccessTokenDto;
 import org.booklore.model.dto.OpdsUser;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.ObjectProvider;
 import org.booklore.config.AppProperties;
 import org.booklore.config.security.JwtUtils;
 import org.booklore.config.security.userdetails.OpdsUserDetails;
@@ -49,7 +49,7 @@ public class AuthenticationService {
     private final DefaultSettingInitializer defaultSettingInitializer;
     private final AuditService auditService;
     private final AuthRateLimitService authRateLimitService;
-    private final AppSettingService appSettingService;
+    private final ObjectProvider<AppSettingService> appSettingService;
 
     public AuthenticationService(
             AppProperties appProperties,
@@ -61,7 +61,7 @@ public class AuthenticationService {
             DefaultSettingInitializer defaultSettingInitializer,
             AuditService auditService,
             AuthRateLimitService authRateLimitService,
-            @Lazy AppSettingService appSettingService
+            ObjectProvider<AppSettingService> appSettingService
     ) {
         this.appProperties = appProperties;
         this.userRepository = userRepository;
@@ -131,7 +131,7 @@ public class AuthenticationService {
 
     @Transactional
     public ResponseEntity<AccessTokenDto> loginUser(UserLoginRequest loginRequest) {
-        if (appSettingService.getAppSettings().isOidcForceOnlyMode()) {
+        if (appSettingService.getObject().getAppSettings().isOidcForceOnlyMode()) {
             BookLoreUserEntity oidcCheckUser = userRepository.findByUsername(loginRequest.getUsername()).orElse(null);
             if (oidcCheckUser == null || !oidcCheckUser.getPermissions().isPermissionAdmin()) {
                 throw ApiError.OIDC_ONLY_MODE.createException();
