@@ -73,6 +73,23 @@ jobs:
             type=gha,scope=image-shared,mode=max
             type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
 
+  build-native:
+    name: Build Native Stable Image
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-native.yml
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+    with:
+      checkout_ref: ${{ github.sha }}
+      app_version: ${{ github.event.release.tag_name }}
+      app_revision: ${{ github.sha }}
+      tags: |
+        type=semver,pattern=v{{version}},value=${{ github.event.release.tag_name }},match=^v(.+)$
+        type=semver,pattern=v{{major}}.{{minor}},value=${{ github.event.release.tag_name }},match=^v(.+)$
+
   publish-helm-chart:
     name: Publish Helm Chart to GHCR
     needs:
