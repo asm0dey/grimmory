@@ -36,6 +36,10 @@ tasks.withType<JavaCompile>().configureEach {
 // Proven flags: preview bytecode (StableValue/StructuredTaskScope), FFM native access,
 // and shared-arena support (pdfium4j uses Arena.ofShared for its cleanup).
 graalvmNative {
+    // no native test execution — disable it so Spring's AOT test-context generation
+    // (processTestAot/compileAotTestJava) stays out of the normal `test` task. The app image uses
+    // main-source processAot, which is unaffected. Re-enable if we ever run tests as a native image.
+    testSupport.set(false)
     binaries.all {
         buildArgs.add("--enable-preview")
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
