@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,6 +39,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import java.time.temporal.ChronoUnit;
@@ -62,10 +65,13 @@ class AuthenticationServiceTest {
 
     @BeforeEach
     void setUp() {
+        ObjectProvider<AppSettingService> appSettingServiceProvider = mock();
+        lenient().when(appSettingServiceProvider.getObject()).thenReturn(appSettingService);
+
         authenticationService = new AuthenticationService(
                 appProperties, userRepository, refreshTokenRepository,
                 userProvisioningService, passwordEncoder, jwtUtils,
-                defaultSettingInitializer, auditService, authRateLimitService, appSettingService
+                defaultSettingInitializer, auditService, authRateLimitService, appSettingServiceProvider
         );
         ReflectionTestUtils.setField(authenticationService, "dummyPasswordHash", "$2a$10$dummy");
 

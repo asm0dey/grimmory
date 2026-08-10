@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -21,6 +22,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,7 +47,13 @@ class AppSettingServiceTest {
     @BeforeEach
     void setUp() {
         settingPersistenceHelper = new SettingPersistenceHelper(appSettingsRepository, new ObjectMapper());
-        appSettingService = new AppSettingService(appProperties, settingPersistenceHelper, authenticationService, auditService);
+
+        ObjectProvider<AuthenticationService> authenticationServiceProvider = mock();
+        when(authenticationServiceProvider.getObject()).thenReturn(authenticationService);
+        ObjectProvider<AuditService> auditServiceProvider = mock();
+        lenient().when(auditServiceProvider.getObject()).thenReturn(auditService);
+
+        appSettingService = new AppSettingService(appProperties, settingPersistenceHelper, authenticationServiceProvider, auditServiceProvider);
 
         var permissions = new BookLoreUser.UserPermissions();
         permissions.setAdmin(true);
