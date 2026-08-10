@@ -3,6 +3,8 @@ package org.booklore.convertor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import tools.jackson.databind.ObjectMapper;
+
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,6 +14,7 @@ class JpaJsonConverterTest {
 
     @BeforeEach
     void setUp() {
+        new ConverterObjectMapperHolder(new ObjectMapper()); // seed static holder converters read at call time
         converter = new JpaJsonConverter();
     }
 
