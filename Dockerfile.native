@@ -1,0 +1,122 @@
+# Native-image build — amd64 only. JVM sibling lives in ./Dockerfile.
+# Frontend, ffprobe, and kepubify stages are intentionally identical to ./Dockerfile.
+
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-build
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="${PNPM_HOME}:${PATH}"
+
+WORKDIR /workspace
+
+RUN npm install --ignore-scripts -g pnpm@11.18.0
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm fetch
+
+COPY package.json ./
+COPY frontend/package.json ./frontend/
+COPY tools/release/package.json ./tools/release/
+RUN --mount=type=cache,target=/pnpm/store \
+    pnpm install --offline --frozen-lockfile --ignore-scripts
+
+COPY frontend/ ./frontend/
+RUN --mount=type=cache,target=/workspace/frontend/.angular/cache \
+    CI=1 NG_CLI_ANALYTICS=false pnpm -C frontend run build:prod
+
+# --- Native backend build (Liberica NIK 25, musl) ---
+FROM bellsoft/liberica-native-image-kit-container:jdk-25-nik-25.0.3-musl AS backend-build
+
+ARG APP_VERSION=development
+ARG APP_REVISION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
+WORKDIR /workspace/backend
+
+COPY backend/gradlew backend/gradlew.bat backend/build.gradle.kts backend/settings.gradle.kts backend/gradle.lockfile ./
+COPY backend/gradle ./gradle
+RUN chmod +x ./gradlew
+
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon dependencies
+
+COPY backend/ ./
+COPY --from=frontend-build /workspace/frontend/dist/grimmory/browser /tmp/frontend-dist
+
+# nativeCompile emits build/native/nativeCompile/grimmory (imageName set in build.gradle.kts).
+# graalvmNative.buildArgs already carries --enable-preview / --enable-native-access / Hibernate
+# / ByteBuddy flags — do not duplicate them here.
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon -PfrontendDistDir=/tmp/frontend-dist nativeCompile
+
+FROM mwader/static-ffmpeg:8.1 AS ffprobe-layer
+
+FROM scratch AS kepubify-layer-amd64
+
+ARG KEPUBIFY_VERSION="4.0.4"
+ARG KEPUBIFY_AMD64_CHECKSUM="sha256:37d7628d26c5c906f607f24b36f781f306075e7073a6fe7820a751bb60431fc5"
+
+ADD \
+    --checksum="${KEPUBIFY_AMD64_CHECKSUM}" \
+    --chmod=755 \
+    https://github.com/pgaskin/kepubify/releases/download/v${KEPUBIFY_VERSION}/kepubify-linux-64bit /kepubify
+
+FROM kepubify-layer-amd64 AS kepubify-layer
+
+# --- su-exec (not packaged for Alpaquita musl; build it from upstream source) ---
+FROM bellsoft/alpaquita-linux-base:musl AS su-exec-build
+
+ARG SU_EXEC_VERSION="0.3"
+ARG SU_EXEC_CHECKSUM="sha256:0c90fe15804f2670037b90e72eb496579fe00d2c15765e5fe2ddec0f5afa35fa"
+
+ADD \
+    --checksum="${SU_EXEC_CHECKSUM}" \
+    https://raw.githubusercontent.com/ncopa/su-exec/v${SU_EXEC_VERSION}/su-exec.c /tmp/su-exec.c
+
+RUN apk add --no-cache gcc musl-dev && \
+    cc -Wall -Werror -o /su-exec /tmp/su-exec.c
+
+# --- Runtime (Alpaquita musl) ---
+FROM bellsoft/alpaquita-linux-base:musl
+
+RUN apk add --no-cache libstdc++ libgcc libarchive && \
+    mkdir -p /bookdrop
+
+COPY --from=su-exec-build /su-exec /sbin/su-exec
+RUN chmod +x /sbin/su-exec
+
+# Manually link `libarchive.so.13` so the native binary's FFM lookups find it.
+RUN ln -s /usr/lib/libarchive.so.13 /usr/lib/libarchive.so
+
+COPY packaging/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+COPY --from=ffprobe-layer /ffprobe /usr/local/bin/ffprobe
+COPY --from=kepubify-layer /kepubify /usr/local/bin/kepubify
+
+COPY --from=backend-build /workspace/backend/build/native/nativeCompile/grimmory /app/grimmory
+
+ARG APP_VERSION=development
+ARG APP_REVISION=unknown
+
+LABEL org.opencontainers.image.title="Grimmory" \
+    org.opencontainers.image.description="Grimmory: a self-hosted, multi-user digital library with smart shelves, auto metadata, Kobo and KOReader sync, BookDrop imports, OPDS support, and a built-in reader for EPUB, PDF, and comics." \
+    org.opencontainers.image.source="https://github.com/grimmory-tools/grimmory" \
+    org.opencontainers.image.url="https://github.com/grimmory-tools/grimmory" \
+    org.opencontainers.image.documentation="https://grimmory.org/docs/getting-started" \
+    org.opencontainers.image.version=$APP_VERSION \
+    org.opencontainers.image.revision=$APP_REVISION \
+    org.opencontainers.image.licenses="AGPL-3.0" \
+    org.opencontainers.image.base.name="docker.io/bellsoft/alpaquita-linux-base:musl"
+
+ENV APP_VERSION=${APP_VERSION} \
+    APP_REVISION=${APP_REVISION}
+
+EXPOSE 6060
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=5 \
+  CMD wget -q --spider http://localhost:${SERVER_PORT:-${BOOKLORE_PORT:-6060}}/api/v1/healthcheck
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/app/grimmory"]
