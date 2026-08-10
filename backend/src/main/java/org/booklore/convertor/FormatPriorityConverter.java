@@ -2,22 +2,18 @@ package org.booklore.convertor;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.model.enums.BookFileType;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.Collections;
 import java.util.List;
 
 @Converter
-@AllArgsConstructor
 @Slf4j
 public class FormatPriorityConverter implements AttributeConverter<List<BookFileType>, String> {
 
-    private final ObjectMapper objectMapper;
     private static final TypeReference<List<BookFileType>> LIST_TYPE_REF = new TypeReference<>() {};
 
     @Override
@@ -26,7 +22,7 @@ public class FormatPriorityConverter implements AttributeConverter<List<BookFile
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(attribute);
+            return ConverterObjectMapperHolder.mapper().writeValueAsString(attribute);
         } catch (JacksonException e) {
             log.error("Error converting format priority list to JSON", e);
             return null;
@@ -39,7 +35,7 @@ public class FormatPriorityConverter implements AttributeConverter<List<BookFile
             return Collections.emptyList();
         }
         try {
-            return objectMapper.readValue(dbData, LIST_TYPE_REF);
+            return ConverterObjectMapperHolder.mapper().readValue(dbData, LIST_TYPE_REF);
         } catch (JacksonException e) {
             log.error("Error converting JSON to format priority list", e);
             return Collections.emptyList();

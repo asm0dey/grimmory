@@ -1,0 +1,12 @@
+{
+  "comment": "Hand-maintained native-image hints for reflection the tracing agent misses on the non-AOT path (Hibernate ServiceLoader providers + dialect). Merged with agent-generated reachability-metadata.json.",
+  "reflection": [
+    {
+      "type": "org.hibernate.dialect.MariaDBDialect",
+      "methods": [
+        { "name": "<init>", "parameterTypes": [] },
+        { "name": "<init>", "parameterTypes": ["org.hibernate.dialect.DialectResolutionInfo"] }
+      ]
+    }
+  ]
+}

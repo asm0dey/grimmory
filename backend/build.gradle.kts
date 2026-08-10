@@ -11,6 +11,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     id("org.hibernate.orm") version "7.4.5.Final"
     id("com.github.ben-manes.versions") version "0.59.0"
+    id("org.graalvm.buildtools.native") version "0.11.0"
     jacoco
 }
 
@@ -29,6 +30,35 @@ java {
 
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("--enable-preview")
+}
+
+// --- Native image (spike) ---
+// Proven flags: preview bytecode (StableValue/StructuredTaskScope), FFM native access,
+// and shared-arena support (pdfium4j uses Arena.ofShared for its cleanup).
+graalvmNative {
+    binaries.all {
+        buildArgs.add("--enable-preview")
+        buildArgs.add("--enable-native-access=ALL-UNNAMED")
+        buildArgs.add("-H:+UnlockExperimentalVMOptions")
+        buildArgs.add("-H:+SharedArenaSupport")
+        // ByteBuddy's JavaDispatcher defines Invoker$Dispatcher in its <clinit>; run that at build
+        // time so the class is defined during the build (native-image forbids runtime class define).
+        buildArgs.add("--initialize-at-build-time=net.bytebuddy")
+        // Hibernate 7.4 picks its BytecodeProvider purely by ServiceLoader (the hibernate.bytecode.*
+        // settings are ignored). The ByteBuddy provider generates a $HibernateInstantiator per entity
+        // at runtime, which native-image forbids. Exclude it so Hibernate falls back to the 'none'
+        // provider (plain reflection) — entities are already build-time-enhanced for lazy loading.
+        buildArgs.add("-H:ServiceLoaderFeatureExcludeServices=org.hibernate.bytecode.internal.bytebuddy.BytecodeProviderImpl")
+    }
+    binaries.named("main") {
+        imageName.set("grimmory")
+        buildArgs.add("--no-fallback")
+    }
+}
+// Spring AOT generation runs the app on a JVM — needs the same preview + native-access flags,
+// otherwise it fails loading the preview-stamped pdfium4j/epub4j classes.
+tasks.matching { it.name == "processAot" || it.name == "processTestAot" }.configureEach {
+    if (this is JavaExec) jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED")
 }
 
 val useLocalLibs = providers.gradleProperty("useLocalLibs").isPresent
@@ -105,6 +135,9 @@ val openApiExportRuntimeOnly by configurations.creating
 dependencies {
     // --- Spring Boot ---
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    // Native image: substitutions + reachability metadata so Hibernate's ByteBuddy bytecode
+    // provider is build-time-safe (avoids "classes cannot be defined at runtime").
+    runtimeOnly("org.hibernate.orm:hibernate-graalvm:7.4.5.Final")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
