@@ -131,6 +131,24 @@ jobs:
             type=gha,scope=image-shared,mode=max
             type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
 
+  build-native:
+    name: Build Native Nightly Image
+    needs: [resolve_ref, test-suite]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-native.yml
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+    with:
+      checkout_ref: ${{ needs.resolve_ref.outputs.commit_sha }}
+      app_version: ${{ needs.resolve_ref.outputs.nightly_tag }}
+      app_revision: ${{ needs.resolve_ref.outputs.commit_sha }}
+      tags: |
+        type=raw,value=nightly
+        type=raw,value=${{ needs.resolve_ref.outputs.nightly_tag }}
+
   export-openapi:
     name: Export Nightly OpenAPI Artifact
     needs: [resolve_ref]
